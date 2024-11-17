@@ -1,0 +1,12 @@
+.swiper {
+  padding-top: 20px;
+  width: 100%; /* Lebar default untuk desktop */
+  height: 100%;
+}
+
+.swiper-slide {
+  border-radius: 10px;
+  width: fit-content; /* Gunakan fit-content agar lebar Swiper Slide menyesuaikan dengan konten di dalamnya */
+  height: 360px;
+  background: #ffffff;
+}
