@@ -24,7 +24,7 @@ export default function Home() {
         {/* Katalog dan tombol lainnya */}
         <div className="flex flex-col gap-4 w-full px-10 md:px-28">
           <Link
-            href="/catalogue"
+            href="#"
             className="bg-[#f9f9f9] text-[#b23847] flex items-center justify-center gap-2 px-4 py-4 rounded-lg transition duration-300 ease-in-out transform hover:bg-[#b23847] hover:text-[#f9f9f9] hover:scale-105"
           >
             <FaBookOpen size={20} />
@@ -67,11 +67,7 @@ export default function Home() {
           >
             <FaInstagram size={30} />
           </Link>
-          <Link
-            href="https://www.facebook.com/adcatering"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <Link href="#" target="_blank" rel="noopener noreferrer">
             <FaFacebook size={30} />
           </Link>
           <Link
