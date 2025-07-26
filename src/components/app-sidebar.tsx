@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Settings2, SquareTerminal } from "lucide-react";
+import { BookOpen, Command, Settings2 } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
@@ -10,59 +10,17 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarRail,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { title } from "process";
-import Image from "next/image";
 
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
   navMain: [
     {
-      title: "Orders",
-      url: "#",
-      icon: SquareTerminal,
-      isActive: true,
-      items: [
-        {
-          title: "All Orders",
-          url: "/administrator/orders",
-        },
-      ],
-    },
-    {
       title: "Menus",
-      url: "#",
-      icon: Bot,
-      items: [
-        {
-          title: "All Menus",
-          url: "/administrator/products",
-        },
-        {
-          title: "Add Menu",
-          url: "/administrator/products/add",
-        },
-      ],
-    },
-    {
-      title: "Categories",
-      url: "#",
-      icon: Bot,
-      items: [
-        {
-          title: "All Categories",
-          url: "/administrator/categories",
-        },
-        {
-          title: "Add Category",
-          url: "/administrator/categories/add",
-        },
-      ],
+      url: "/administrator/menus",
+      icon: BookOpen,
     },
     {
       title: "Settings",
@@ -74,15 +32,7 @@ const data = {
           url: "#",
         },
         {
-          title: "Team",
-          url: "#",
-        },
-        {
-          title: "Billing",
-          url: "#",
-        },
-        {
-          title: "Limits",
+          title: "Change Password",
           url: "#",
         },
       ],
@@ -92,23 +42,30 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="flex justify-center items-center">
-        <Image
-          src="/logo.jpg"
-          alt="Logo"
-          width={80}
-          height={80}
-          className="relative"
-        />
+    <Sidebar variant="inset" {...props}>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild>
+              <a href="#">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                  <Command className="size-4" />
+                </div>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">Ad Catering</span>
+                  <span className="truncate text-xs">Enterprise</span>
+                </div>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser />
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   );
 }

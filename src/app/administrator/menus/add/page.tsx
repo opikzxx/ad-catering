@@ -211,10 +211,8 @@ export default function Page() {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="electronics">Electronics</SelectItem>
-                      <SelectItem value="clothing">Clothing</SelectItem>
-                      <SelectItem value="books">Books</SelectItem>
-                      <SelectItem value="home">Home & Garden</SelectItem>
+                      <SelectItem value="kenduri">Kenduri</SelectItem>
+                      <SelectItem value="aqiqah">Aqiqah</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -224,7 +222,7 @@ export default function Page() {
             <FormField
               control={form.control}
               name="image"
-              render={({ field: { onChange, value, ...rest } }) => (
+              render={({ field: { onChange, ...rest } }) => (
                 <FormItem>
                   <FormLabel>Product Image</FormLabel>
                   <FormControl>
