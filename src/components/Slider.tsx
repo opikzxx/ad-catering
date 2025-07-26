@@ -15,6 +15,7 @@ interface Paket {
   title: string;
   image: string;
   harga: number;
+  hargaDiskon: number;
   diskon: number;
   deskripsi: Description[];
 }
@@ -68,7 +69,7 @@ export default function Slider({ data }: SliderProps) {
       >
         {data.paket.map((paket, index) => (
           <SwiperSlide key={index}>
-            <Card data={paket} />
+            <Card data={paket} categoryName={data.title} />
           </SwiperSlide>
         ))}
       </Swiper>

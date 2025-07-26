@@ -1,10 +1,9 @@
 // src/lib/auth.ts
 import NextAuth from "next-auth";
 import { type NextAuthConfig } from "next-auth";
-import { JWT } from "next-auth/jwt";
 import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 const config: NextAuthConfig = {
   providers: [
@@ -18,24 +17,27 @@ const config: NextAuthConfig = {
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+        const res = await fetch(`${API_URL}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: credentials.email,
+            password: credentials.password,
+          }),
         });
 
-        if (!user) return null;
+        const result = await res.json();
 
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password as string,
-          user.password
-        );
+        if (!res.ok || !result.success) return null;
 
-        if (!isPasswordValid) return null;
+        const { user, token } = result.data;
 
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           role: user.role,
+          token,
         };
       },
     }),
@@ -48,18 +50,18 @@ const config: NextAuthConfig = {
     maxAge: 24 * 60 * 60, // 24 hours
   },
   callbacks: {
-    jwt({ token, user }): JWT {
+    jwt({ token, user }) {
       if (user) {
-        token.role = user.role;
         token.id = user.id;
+        token.role = user.role;
+        token.accessToken = user.token; // ✅ simpan token custom
       }
       return token;
     },
     session({ session, token }) {
-      if (token) {
-        session.user.id = token.sub!;
-        session.user.role = token.role;
-      }
+      session.user.id = token.id as string;
+      session.user.role = token.role as string;
+      session.accessToken = token.accessToken as string; // ✅ simpan ke session
       return session;
     },
   },

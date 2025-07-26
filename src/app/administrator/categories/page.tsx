@@ -7,11 +7,12 @@ import React, {
   useMemo,
   Suspense,
 } from "react";
-import Image from "next/image";
-import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
 
 // UI Components
 import {
@@ -25,12 +26,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +44,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,32 +65,18 @@ import {
   Plus,
   AlertCircle,
   RefreshCw,
+  FolderIcon,
 } from "lucide-react";
 
 // Types
 interface Category {
   id: string;
   name: string;
-}
-
-interface Menu {
-  id: string;
-  name: string;
-  description: string[];
-  price: number;
-  discountedPrice?: number;
-  discountPercent?: number;
-  status: "DRAFT" | "PUBLISHED";
-  imageUrl?: string;
-  imageKey?: string;
-  imageAlt?: string;
-  categoryId: string;
-  category: {
-    id: string;
-    name: string;
-  };
   createdAt: string;
   updatedAt: string;
+  _count: {
+    menus: number;
+  };
 }
 
 interface Pagination {
@@ -89,20 +86,35 @@ interface Pagination {
   pages: number;
 }
 
-interface MenuResponse {
-  menus: Menu[];
+interface CategoryResponse {
+  categories: Category[];
   pagination: Pagination;
 }
 
 interface ApiError {
   message: string;
   code?: string;
+  details?: Array<{
+    path?: string[];
+    message: string;
+  }>;
 }
 
 // Constants
 const ITEMS_PER_PAGE = 10;
 const DEBOUNCE_DELAY = 500;
 const MAX_RETRIES = 3;
+
+// Form Schemas
+const categorySchema = z.object({
+  name: z
+    .string()
+    .min(1, "Category name is required")
+    .max(100, "Category name must be less than 100 characters")
+    .refine((val) => val.trim().length > 0, "Category name cannot be empty"),
+});
+
+type CategoryFormValues = z.infer<typeof categorySchema>;
 
 // Custom hooks
 const useDebounce = (value: string, delay: number) => {
@@ -121,17 +133,11 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
-const useMenuFilters = () => {
+const useCategoryFilters = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const [search, setSearch] = useState(searchParams.get("search") || "");
-  const [selectedCategory, setSelectedCategory] = useState(
-    searchParams.get("category") || "all"
-  );
-  const [selectedStatus, setSelectedStatus] = useState(
-    searchParams.get("status") || "all"
-  );
   const [currentPage, setCurrentPage] = useState(
     parseInt(searchParams.get("page") || "1")
   );
@@ -143,13 +149,11 @@ const useMenuFilters = () => {
     const params = new URLSearchParams();
 
     if (debouncedSearch) params.set("search", debouncedSearch);
-    if (selectedCategory !== "all") params.set("category", selectedCategory);
-    if (selectedStatus !== "all") params.set("status", selectedStatus);
     if (currentPage > 1) params.set("page", currentPage.toString());
 
     const newUrl = params.toString() ? `?${params.toString()}` : "";
     router.replace(newUrl, { scroll: false });
-  }, [debouncedSearch, selectedCategory, selectedStatus, currentPage, router]);
+  }, [debouncedSearch, currentPage, router]);
 
   useEffect(() => {
     updateUrlParams();
@@ -157,24 +161,17 @@ const useMenuFilters = () => {
 
   const clearFilters = useCallback(() => {
     setSearch("");
-    setSelectedCategory("all");
-    setSelectedStatus("all");
     setCurrentPage(1);
   }, []);
 
   return {
     search,
     setSearch,
-    selectedCategory,
-    setSelectedCategory,
-    selectedStatus,
-    setSelectedStatus,
     currentPage,
     setCurrentPage,
     debouncedSearch,
     clearFilters,
-    hasActiveFilters:
-      search || selectedCategory !== "all" || selectedStatus !== "all",
+    hasActiveFilters: search,
   };
 };
 
@@ -201,67 +198,33 @@ const apiRequest = async (url: string, options: RequestInit = {}) => {
 // Components
 const LoadingRow = () => (
   <TableRow>
-    <TableCell colSpan={7} className="text-center py-12">
+    <TableCell colSpan={5} className="text-center py-12">
       <div className="flex items-center justify-center space-x-2">
         <RefreshCw className="h-4 w-4 animate-spin" />
-        <span>Loading menus...</span>
+        <span>Loading categories...</span>
       </div>
     </TableCell>
   </TableRow>
 );
 
-const EmptyRow = () => (
+const EmptyRow = ({ onAdd }: { onAdd: () => void }) => (
   <TableRow>
-    <TableCell colSpan={7} className="text-center py-12">
+    <TableCell colSpan={5} className="text-center py-12">
       <div className="flex flex-col items-center space-y-4">
-        <AlertCircle className="h-12 w-12 text-muted-foreground" />
+        <FolderIcon className="h-12 w-12 text-muted-foreground" />
         <div className="space-y-2">
-          <div className="text-lg font-medium">No menus found</div>
+          <div className="text-lg font-medium">No categories found</div>
+          <div className="text-sm text-muted-foreground">
+            Get started by creating your first category
+          </div>
         </div>
+        <Button onClick={onAdd}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add First Category
+        </Button>
       </div>
     </TableCell>
   </TableRow>
-);
-
-const MenuImage = ({ menu }: { menu: Menu }) => {
-  const [imageError, setImageError] = useState(false);
-
-  if (!menu.imageUrl || imageError) {
-    return (
-      <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center border">
-        <span className="text-xs text-muted-foreground">No Image</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative w-16 h-16 rounded-lg overflow-hidden border">
-      <Image
-        src={menu.imageUrl}
-        alt={menu.imageAlt || menu.name}
-        fill
-        className="object-cover"
-        onError={() => setImageError(true)}
-        sizes="64px"
-        priority={false}
-      />
-    </div>
-  );
-};
-
-const StatsCard = ({
-  title,
-  value,
-  className,
-}: {
-  title: string;
-  value: number;
-  className?: string;
-}) => (
-  <div className="bg-card rounded-lg border p-4">
-    <div className={`text-2xl font-bold ${className}`}>{value}</div>
-    <div className="text-sm text-muted-foreground">{title}</div>
-  </div>
 );
 
 const PaginationInfo = ({ pagination }: { pagination: Pagination }) => (
@@ -356,16 +319,148 @@ const PaginationButtons = ({
   );
 };
 
+// Category Form Dialog
+const CategoryFormDialog = ({
+  category,
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  category?: Category;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void;
+}) => {
+  const { data: session } = useSession();
+  const [loading, setLoading] = useState(false);
+  const isEdit = !!category;
+
+  const form = useForm<CategoryFormValues>({
+    resolver: zodResolver(categorySchema),
+    defaultValues: {
+      name: category?.name || "",
+    },
+  });
+
+  // Reset form when category changes
+  useEffect(() => {
+    if (category) {
+      form.reset({ name: category.name });
+    } else {
+      form.reset({ name: "" });
+    }
+  }, [category, form]);
+
+  const onSubmit = useCallback(
+    async (values: CategoryFormValues) => {
+      if (!session?.accessToken) {
+        toast.error("Authentication required");
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        const url = isEdit
+          ? `/api/admin/categories/${category!.id}`
+          : "/api/admin/categories";
+
+        const method = isEdit ? "PUT" : "POST";
+
+        await apiRequest(url, {
+          method,
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+          },
+          body: JSON.stringify({ name: values.name.trim() }),
+        });
+
+        toast.success(
+          `Category ${isEdit ? "updated" : "created"} successfully!`
+        );
+        onSuccess();
+        onOpenChange(false);
+        form.reset();
+      } catch (error) {
+        console.error(
+          `Error ${isEdit ? "updating" : "creating"} category:`,
+          error
+        );
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : `Failed to ${isEdit ? "update" : "create"} category`;
+        toast.error(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [session?.accessToken, isEdit, category, onSuccess, onOpenChange, form]
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>
+            {isEdit ? "Edit Category" : "Add New Category"}
+          </DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? "Update the category name. This will affect all associated menus."
+              : "Create a new category for organizing your menu items."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Category Name *</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Enter category name"
+                      {...field}
+                      disabled={loading}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    A unique name for your menu category
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+                {isEdit ? "Update Category" : "Create Category"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 // Suspense fallback component
-const MenuListPageFallback = () => (
+const CategoriesPageFallback = () => (
   <div className="container mx-auto py-6">
     <Skeleton className="h-8 w-64 mb-4" />
     <Skeleton className="h-4 w-96 mb-8" />
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <Skeleton key={i} className="h-20 w-full" />
-      ))}
-    </div>
     <div className="space-y-4">
       {Array.from({ length: 5 }).map((_, i) => (
         <Skeleton key={i} className="h-16 w-full" />
@@ -375,13 +470,16 @@ const MenuListPageFallback = () => (
 );
 
 // Inner component that uses useSearchParams
-const MenuListPageContent = () => {
-  const [menus, setMenus] = useState<Menu[]>([]);
+const CategoriesPageContent = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<
+    Category | undefined
+  >();
 
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -394,16 +492,12 @@ const MenuListPageContent = () => {
   const {
     search,
     setSearch,
-    selectedCategory,
-    setSelectedCategory,
-    selectedStatus,
-    setSelectedStatus,
     currentPage,
     setCurrentPage,
     debouncedSearch,
     clearFilters,
     hasActiveFilters,
-  } = useMenuFilters();
+  } = useCategoryFilters();
 
   // Memoized values
   const authHeaders = useMemo(
@@ -413,25 +507,8 @@ const MenuListPageContent = () => {
     [session?.accessToken]
   );
 
-  const statsData = useMemo(
-    () => ({
-      total: pagination.total,
-      published: menus.filter((m) => m.status === "PUBLISHED").length,
-      drafts: menus.filter((m) => m.status === "DRAFT").length,
-    }),
-    [menus, pagination.total]
-  );
-
-  const formatPrice = useCallback((price: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(price);
-  }, []);
-
   // API functions
-  const fetchMenus = useCallback(async () => {
+  const fetchCategories = useCallback(async () => {
     if (status !== "authenticated") return;
 
     try {
@@ -442,92 +519,66 @@ const MenuListPageContent = () => {
         page: currentPage.toString(),
         limit: ITEMS_PER_PAGE.toString(),
         ...(debouncedSearch && { search: debouncedSearch }),
-        ...(selectedCategory !== "all" && { categoryId: selectedCategory }),
-        ...(selectedStatus !== "all" && { status: selectedStatus }),
       });
 
-      const data: MenuResponse = await apiRequest(
-        `/api/admin/menus?${params}`,
+      const data: CategoryResponse = await apiRequest(
+        `/api/admin/categories?${params}`,
         { headers: authHeaders }
       );
 
-      setMenus(data.menus);
+      setCategories(data.categories);
       setPagination(data.pagination);
       setRetryCount(0);
     } catch (error) {
-      console.error("Error fetching menus:", error);
+      console.error("Error fetching categories:", error);
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to fetch menus";
+        error instanceof Error ? error.message : "Failed to fetch categories";
       setError(errorMessage);
 
       if (retryCount < MAX_RETRIES) {
         setRetryCount((prev) => prev + 1);
-        setTimeout(() => fetchMenus(), 1000 * Math.pow(2, retryCount));
+        setTimeout(() => fetchCategories(), 1000 * Math.pow(2, retryCount));
       } else {
         toast.error(errorMessage);
       }
     } finally {
       setLoading(false);
     }
-  }, [
-    currentPage,
-    debouncedSearch,
-    selectedCategory,
-    selectedStatus,
-    authHeaders,
-    status,
-    retryCount,
-  ]);
-
-  const fetchCategories = useCallback(async () => {
-    if (status !== "authenticated") return;
-
-    try {
-      const data = await apiRequest("/api/admin/categories", {
-        headers: authHeaders,
-      });
-      setCategories(data.categories || []);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-      // Don't show toast for categories error as it's not critical
-    }
-  }, [authHeaders, status]);
+  }, [currentPage, debouncedSearch, authHeaders, status, retryCount]);
 
   const handleDelete = useCallback(
-    async (menuId: string) => {
+    async (categoryId: string) => {
       if (!session?.accessToken) {
         toast.error("Authentication required");
         return;
       }
 
       try {
-        setDeleting(menuId);
+        setDeleting(categoryId);
 
-        await apiRequest(`/api/admin/menus/${menuId}`, {
+        await apiRequest(`/api/admin/categories/${categoryId}`, {
           method: "DELETE",
           headers: authHeaders,
         });
 
-        toast.success("Menu deleted successfully");
-
-        // Refresh the list
-        await fetchMenus();
+        toast.success("Category deleted successfully");
+        await fetchCategories();
       } catch (error) {
-        console.error("Error deleting menu:", error);
+        console.error("Error deleting category:", error);
         const errorMessage =
-          error instanceof Error ? error.message : "Failed to delete menu";
+          error instanceof Error ? error.message : "Failed to delete category";
         toast.error(errorMessage);
       } finally {
         setDeleting(null);
       }
     },
-    [session?.accessToken, authHeaders, fetchMenus]
+    [session?.accessToken, authHeaders, fetchCategories]
   );
 
   const handleRetry = useCallback(() => {
     setRetryCount(0);
-    fetchMenus();
-  }, [fetchMenus]);
+    fetchCategories();
+  }, [fetchCategories]);
 
   const handlePageChange = useCallback(
     (page: number) => {
@@ -537,13 +588,21 @@ const MenuListPageContent = () => {
     [setCurrentPage]
   );
 
-  // Effects
-  useEffect(() => {
-    if (status === "authenticated") {
-      fetchMenus();
-    }
-  }, [fetchMenus, status]);
+  const handleAddCategory = useCallback(() => {
+    setEditingCategory(undefined);
+    setDialogOpen(true);
+  }, []);
 
+  const handleEditCategory = useCallback((category: Category) => {
+    setEditingCategory(category);
+    setDialogOpen(true);
+  }, []);
+
+  const handleDialogSuccess = useCallback(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  // Effects
   useEffect(() => {
     if (status === "authenticated") {
       fetchCategories();
@@ -552,11 +611,11 @@ const MenuListPageContent = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, selectedCategory, selectedStatus, setCurrentPage]);
+  }, [debouncedSearch, setCurrentPage]);
 
   // Loading state for unauthenticated
   if (status === "loading") {
-    return <MenuListPageFallback />;
+    return <CategoriesPageFallback />;
   }
 
   // Unauthenticated state
@@ -569,7 +628,7 @@ const MenuListPageContent = () => {
             Authentication Required
           </h2>
           <p className="text-muted-foreground">
-            Please sign in to access the menu management.
+            Please sign in to access the category management.
           </p>
         </div>
       </div>
@@ -581,17 +640,17 @@ const MenuListPageContent = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-lg font-bold tracking-tight">Menu Management</h1>
+          <h1 className="text-lg font-bold tracking-tight">
+            Category Management
+          </h1>
           <p className="text-muted-foreground text-sm">
-            Manage your restaurant menu items and categories
+            Organize your menu items into categories
           </p>
         </div>
-        <Link href="/administrator/menus/add">
-          <Button className="w-full sm:w-auto">
-            <Plus className="h-4 w-4 mr-2" />
-            Add New Menu
-          </Button>
-        </Link>
+        <Button onClick={handleAddCategory} className="w-full sm:w-auto">
+          <Plus className="h-4 w-4 mr-2" />
+          Add New Category
+        </Button>
       </div>
 
       <Separator />
@@ -617,37 +676,12 @@ const MenuListPageContent = () => {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search menus by name..."
+            placeholder="Search categories by name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
           />
         </div>
-
-        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="w-full lg:w-[200px]">
-            <SelectValue placeholder="Filter by category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id}>
-                {category.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-          <SelectTrigger className="w-full lg:w-[200px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="PUBLISHED">Published</SelectItem>
-            <SelectItem value="DRAFT">Draft</SelectItem>
-          </SelectContent>
-        </Select>
 
         {hasActiveFilters && (
           <Button
@@ -660,115 +694,51 @@ const MenuListPageContent = () => {
         )}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatsCard title="Total Menus" value={statsData.total} />
-        <StatsCard
-          title="Published"
-          value={statsData.published}
-          className="text-green-600"
-        />
-        <StatsCard
-          title="Drafts"
-          value={statsData.drafts}
-          className="text-yellow-600"
-        />
-      </div>
-
       {/* Table */}
       <div className="border rounded-lg bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[80px]">Image</TableHead>
-              <TableHead>Menu Details</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Pricing</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Updated</TableHead>
+              <TableHead>Category Name</TableHead>
+              <TableHead>Menu Count</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <LoadingRow />
-            ) : menus.length === 0 ? (
-              <EmptyRow />
+            ) : categories.length === 0 ? (
+              <EmptyRow onAdd={handleAddCategory} />
             ) : (
-              menus.map((menu) => (
-                <TableRow key={menu.id} className="hover:bg-muted/50">
+              categories.map((category) => (
+                <TableRow key={category.id} className="hover:bg-muted/50">
                   <TableCell>
-                    <MenuImage menu={menu} />
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="space-y-1">
-                      <p className="font-semibold text-base">{menu.name}</p>
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {menu.description.join(" • ")}
-                      </p>
+                    <div className="flex items-center space-x-2">
+                      <FolderIcon className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{category.name}</span>
                     </div>
                   </TableCell>
 
                   <TableCell>
-                    <Badge variant="outline" className="font-medium">
-                      {menu.category.name}
-                    </Badge>
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="space-y-1">
-                      {menu.discountedPrice ? (
-                        <>
-                          <div className="flex items-center space-x-2">
-                            <p className="font-bold text-green-600">
-                              {formatPrice(menu.discountedPrice)}
-                            </p>
-                            <Badge variant="destructive" className="text-xs">
-                              -{menu.discountPercent}%
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground line-through">
-                            {formatPrice(menu.price)}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="font-bold">{formatPrice(menu.price)}</p>
-                      )}
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
-                    <Badge
-                      variant={
-                        menu.status === "PUBLISHED" ? "default" : "secondary"
-                      }
-                      className="font-medium"
-                    >
-                      {menu.status}
-                    </Badge>
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="text-sm">
-                      <p className="font-medium">
-                        {new Date(menu.updatedAt).toLocaleDateString("id-ID")}
-                      </p>
-                      <p className="text-muted-foreground">
-                        {new Date(menu.updatedAt).toLocaleTimeString("id-ID", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
+                    <div className="flex items-center space-x-2">
+                      <Badge
+                        variant={
+                          category._count.menus > 0 ? "default" : "secondary"
+                        }
+                      >
+                        {category._count.menus}
+                      </Badge>
                     </div>
                   </TableCell>
 
                   <TableCell className="text-right">
                     <div className="flex gap-2 justify-end">
-                      <Button size="sm" variant="ghost" asChild>
-                        <Link href={`/administrator/menus/${menu.id}`}>
-                          <PencilIcon className="h-4 w-4" />
-                        </Link>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleEditCategory(category)}
+                      >
+                        <PencilIcon className="h-4 w-4" />
                       </Button>
 
                       <AlertDialog>
@@ -777,28 +747,40 @@ const MenuListPageContent = () => {
                             size="sm"
                             variant="ghost"
                             className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            disabled={deleting === menu.id}
+                            disabled={
+                              deleting === category.id ||
+                              category._count.menus > 0
+                            }
                           >
                             <TrashIcon className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Menu</AlertDialogTitle>
+                            <AlertDialogTitle>Delete Category</AlertDialogTitle>
                             <AlertDialogDescription>
                               Are you sure you want to delete{" "}
-                              <strong>{menu.name}</strong>? This action cannot
-                              be undone and will also delete the associated
-                              image.
+                              <strong>{category.name}</strong>? This action
+                              cannot be undone.
+                              {category._count.menus > 0 && (
+                                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                                  <strong>Warning:</strong> This category has{" "}
+                                  {category._count.menus} menu item(s). You must
+                                  move or delete these items first.
+                                </div>
+                              )}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction
-                              onClick={() => handleDelete(menu.id)}
+                              onClick={() => handleDelete(category.id)}
+                              disabled={category._count.menus > 0}
                               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             >
-                              {deleting === menu.id ? "Deleting..." : "Delete"}
+                              {deleting === category.id
+                                ? "Deleting..."
+                                : "Delete"}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -823,15 +805,23 @@ const MenuListPageContent = () => {
           />
         </div>
       )}
+
+      {/* Category Form Dialog */}
+      <CategoryFormDialog
+        category={editingCategory}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSuccess={handleDialogSuccess}
+      />
     </div>
   );
 };
 
 // Main component wrapped with Suspense
-export default function MenuListPage() {
+export default function CategoriesPage() {
   return (
-    <Suspense fallback={<MenuListPageFallback />}>
-      <MenuListPageContent />
+    <Suspense fallback={<CategoriesPageFallback />}>
+      <CategoriesPageContent />
     </Suspense>
   );
 }

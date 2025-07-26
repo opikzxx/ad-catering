@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -39,9 +39,10 @@ import {
   PlusCircle,
   X,
   Loader2,
+  Upload,
   AlertCircle,
   RefreshCw,
-  Upload,
+  ImageIcon,
 } from "lucide-react";
 
 // Constants
@@ -60,6 +61,24 @@ const RETRY_DELAY = 1000;
 interface Category {
   id: string;
   name: string;
+}
+
+interface Menu {
+  id: string;
+  name: string;
+  description: string[];
+  price: number;
+  discountedPrice?: number;
+  discountPercent?: number;
+  status: "DRAFT" | "PUBLISHED";
+  imageUrl?: string;
+  imageKey?: string;
+  imageAlt?: string;
+  categoryId: string;
+  category: {
+    id: string;
+    name: string;
+  };
 }
 
 interface ApiError {
@@ -113,11 +132,9 @@ const formSchema = z.object({
           "Discounted price must be a valid number between 1 and 10,000,000.",
       }
     ),
-  categoryId: z
-    .string({
-      required_error: "Please select a category.",
-    })
-    .min(1, { message: "Please select a category." }),
+  categoryId: z.string().min(1, {
+    message: "Please select a category.",
+  }),
   status: z.enum(["DRAFT", "PUBLISHED"]).default("DRAFT"),
   imageAlt: z
     .string()
@@ -131,17 +148,7 @@ const formSchema = z.object({
         message: "Image alt text must be less than 255 characters.",
       }
     ),
-  image: z
-    .any()
-    .refine((files) => files?.length === 1, "Image is required.")
-    .refine(
-      (files) => files?.[0]?.size <= MAX_FILE_SIZE,
-      `Max file size is 5MB.`
-    )
-    .refine(
-      (files) => ACCEPTED_IMAGE_TYPES.includes(files?.[0]?.type),
-      ".jpg, .jpeg, .png and .webp files are accepted."
-    ),
+  image: z.any().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -175,14 +182,89 @@ const apiRequest = async (url: string, options: RequestInit = {}) => {
 
 // Components
 const LoadingForm = () => (
-  <div className="space-y-6">
-    <Skeleton className="h-10 w-full" />
-    <Skeleton className="h-32 w-full" />
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div className="w-full space-y-8">
+    {/* Menu Name */}
+    <div className="w-full space-y-2">
+      <Skeleton className="h-4 " />
       <Skeleton className="h-10 w-full" />
-      <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-4 " />
     </div>
-    <Skeleton className="h-40 w-full" />
+
+    {/* Description */}
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-4 w-64" />
+      </div>
+      <div className="space-y-2">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+      </div>
+      <Skeleton className="h-8 w-36" />
+    </div>
+
+    {/* Price Fields */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-4 w-40" />
+      </div>
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-4 w-48" />
+      </div>
+    </div>
+
+    {/* Category and Status */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-16" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-4 w-52" />
+      </div>
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-12" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-4 w-44" />
+      </div>
+    </div>
+
+    {/* Image Upload */}
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-4 w-4" />
+        <Skeleton className="h-4 w-24" />
+      </div>
+      <div className="space-y-2">
+        <Skeleton className="h-10 w-full" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-4" />
+          <Skeleton className="h-4 w-48" />
+        </div>
+      </div>
+      <Skeleton className="h-4 w-80" />
+    </div>
+
+    {/* Image Alt Text */}
+    <div className="space-y-2">
+      <Skeleton className="h-4 w-28" />
+      <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-4 w-72" />
+    </div>
+
+    {/* Separator */}
+    <Skeleton className="h-px w-full" />
+
+    {/* Action Buttons */}
+    <div className="flex flex-col sm:flex-row justify-between gap-4">
+      <Skeleton className="h-10 w-full sm:w-24" />
+      <div className="flex flex-col sm:flex-row gap-2">
+        <Skeleton className="h-10 w-full sm:w-32" />
+        <Skeleton className="h-10 w-full sm:w-36" />
+      </div>
+    </div>
   </div>
 );
 
@@ -207,6 +289,38 @@ const ErrorBanner = ({
   </div>
 );
 
+const CurrentImage = ({
+  src,
+  alt,
+  onRemove,
+}: {
+  src: string;
+  alt: string;
+  onRemove?: () => void;
+}) => (
+  <div className="space-y-2">
+    <div className="flex items-center justify-between">
+      <FormLabel>Current Image</FormLabel>
+      {onRemove && (
+        <Button type="button" variant="outline" size="sm" onClick={onRemove}>
+          <X className="h-4 w-4 mr-2" />
+          Remove Current
+        </Button>
+      )}
+    </div>
+    <div className="relative w-48 h-48 border rounded-lg overflow-hidden bg-muted">
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        className="object-cover"
+        sizes="192px"
+        priority={false}
+      />
+    </div>
+  </div>
+);
+
 const ImagePreview = ({
   src,
   alt,
@@ -218,7 +332,7 @@ const ImagePreview = ({
 }) => (
   <div className="mt-4">
     <div className="flex items-center justify-between mb-2">
-      <p className="text-sm font-medium">Preview:</p>
+      <p className="text-sm font-medium">New Image Preview:</p>
       <Button type="button" variant="outline" size="sm" onClick={onClear}>
         <X className="h-4 w-4 mr-2" />
         Remove
@@ -238,17 +352,23 @@ const ImagePreview = ({
 );
 
 // Main Component
-export default function AddMenuPage() {
+export default function EditMenuPage() {
   const router = useRouter();
+  const params = useParams();
   const { data: session, status } = useSession();
+  const menuId = params.id as string;
 
   // State
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [menuError, setMenuError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [menuRetryCount, setMenuRetryCount] = useState(0);
 
   // Memoized values
   const authHeaders = useMemo(
@@ -272,7 +392,7 @@ export default function AddMenuPage() {
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
     name: "description",
   });
@@ -298,6 +418,60 @@ export default function AddMenuPage() {
   }, [watchedPrice, watchedDiscountedPrice, form]);
 
   // API Functions
+  const fetchMenu = useCallback(async () => {
+    if (status !== "authenticated" || !menuId) return;
+
+    try {
+      setInitialLoading(true);
+      setMenuError(null);
+
+      const data = await apiRequest(`/api/admin/menus/${menuId}`, {
+        headers: authHeaders,
+      });
+
+      const menu: Menu = data.menu;
+
+      // Set form values
+      form.reset({
+        name: menu.name,
+        description: menu.description,
+        price: menu.price.toString(),
+        discountedPrice: menu.discountedPrice?.toString() || "",
+        categoryId: menu.categoryId,
+        status: menu.status,
+        imageAlt: menu.imageAlt || "",
+      });
+
+      // Replace description array
+      replace(menu.description);
+
+      // Set current image
+      if (menu.imageUrl) {
+        setCurrentImageUrl(menu.imageUrl);
+      }
+
+      setMenuRetryCount(0);
+    } catch (error) {
+      console.error("Error fetching menu:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to fetch menu data";
+      setMenuError(errorMessage);
+
+      if (menuRetryCount < MAX_RETRIES) {
+        setMenuRetryCount((prev) => prev + 1);
+        setTimeout(
+          () => fetchMenu(),
+          RETRY_DELAY * Math.pow(2, menuRetryCount)
+        );
+      } else {
+        toast.error(errorMessage);
+        router.push("/administrator/menus");
+      }
+    } finally {
+      setInitialLoading(false);
+    }
+  }, [authHeaders, status, menuId, form, replace, router, menuRetryCount]);
+
   const fetchCategories = useCallback(async () => {
     if (status !== "authenticated") return;
 
@@ -331,26 +505,17 @@ export default function AddMenuPage() {
     }
   }, [authHeaders, status, retryCount]);
 
+  const handleRetryMenu = useCallback(() => {
+    setMenuRetryCount(0);
+    fetchMenu();
+  }, [fetchMenu]);
+
   const handleRetryCategories = useCallback(() => {
     setRetryCount(0);
     fetchCategories();
   }, [fetchCategories]);
 
   // Form Handlers
-  const handleImageClear = useCallback(() => {
-    setImagePreview(null);
-    form.setValue("image", undefined);
-    form.clearErrors("image");
-
-    // Reset the file input
-    const fileInput = document.querySelector(
-      'input[type="file"]'
-    ) as HTMLInputElement;
-    if (fileInput) {
-      fileInput.value = "";
-    }
-  }, [form]);
-
   const handleImageChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -366,7 +531,6 @@ export default function AddMenuPage() {
           type: "manual",
           message: "File size too large. Maximum size is 5MB.",
         });
-        // Reset the input
         e.target.value = "";
         setImagePreview(null);
         return;
@@ -378,7 +542,6 @@ export default function AddMenuPage() {
           type: "manual",
           message: "Invalid file type. Only JPEG, PNG, and WebP are allowed.",
         });
-        // Reset the input
         e.target.value = "";
         setImagePreview(null);
         return;
@@ -402,6 +565,25 @@ export default function AddMenuPage() {
     [form]
   );
 
+  const handleImageClear = useCallback(() => {
+    setImagePreview(null);
+    form.setValue("image", undefined);
+    form.clearErrors("image");
+
+    // Reset the file input
+    const fileInput = document.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = "";
+    }
+  }, [form]);
+
+  const handleCurrentImageRemove = useCallback(() => {
+    setCurrentImageUrl(null);
+    // Note: You might want to add logic here to mark the image for deletion on the server
+  }, []);
+
   const onSubmit = useCallback(
     async (values: FormValues) => {
       if (!session?.accessToken) {
@@ -412,66 +594,115 @@ export default function AddMenuPage() {
       try {
         setLoading(true);
 
-        // Prepare form data
-        const formData = new FormData();
+        const hasNewImage = values.image?.[0];
 
-        const menuData = {
-          name: values.name.trim(),
-          description: values.description
-            .map((desc) => desc.trim())
-            .filter((desc) => desc !== ""),
-          price: Number(values.price),
-          ...(values.discountedPrice && {
-            discountedPrice: Number(values.discountedPrice),
-          }),
-          categoryId: values.categoryId,
-          status: values.status,
-          imageAlt: values.imageAlt?.trim() || values.name.trim(),
-        };
+        if (hasNewImage) {
+          // Submit with new image using FormData
+          const formData = new FormData();
 
-        formData.append("data", JSON.stringify(menuData));
-
-        if (values.image?.[0]) {
-          formData.append("image", values.image[0]);
-        }
-
-        const response = await fetch("/api/admin/menus", {
-          method: "POST",
-          headers: authHeaders,
-          body: formData,
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-          toast.success("Menu created successfully!");
-          router.push("/administrator/menus");
-        } else {
-          const error: ApiError = {
-            message: result.error || result.message || "Failed to create menu",
-            details: result.details,
+          const menuData = {
+            name: values.name.trim(),
+            description: values.description
+              .map((desc) => desc.trim())
+              .filter((desc) => desc !== ""),
+            price: Number(values.price),
+            ...(values.discountedPrice && {
+              discountedPrice: Number(values.discountedPrice),
+            }),
+            categoryId: values.categoryId,
+            status: values.status,
+            imageAlt: values.imageAlt?.trim() || values.name.trim(),
           };
 
-          toast.error(error.message);
+          formData.append("data", JSON.stringify(menuData));
+          formData.append("image", values.image[0]);
 
-          // Handle validation errors
-          if (error.details) {
-            error.details.forEach((detail: ValidationDetail) => {
-              const fieldPath = detail.path?.join(".") || "general";
-              toast.error(`${fieldPath}: ${detail.message}`);
-            });
+          const response = await fetch(`/api/admin/menus/${menuId}`, {
+            method: "PUT",
+            headers: authHeaders,
+            body: formData,
+          });
+
+          const result = await response.json();
+
+          if (response.ok) {
+            toast.success("Menu updated successfully!");
+            router.push("/administrator/menus");
+          } else {
+            const error: ApiError = {
+              message:
+                result.error || result.message || "Failed to update menu",
+              details: result.details,
+            };
+
+            toast.error(error.message);
+
+            // Handle validation errors
+            if (error.details) {
+              error.details.forEach((detail: ValidationDetail) => {
+                const fieldPath = detail.path?.join(".") || "general";
+                toast.error(`${fieldPath}: ${detail.message}`);
+              });
+            }
+          }
+        } else {
+          // Submit without image using JSON
+          const menuData = {
+            name: values.name.trim(),
+            description: values.description
+              .map((desc) => desc.trim())
+              .filter((desc) => desc !== ""),
+            price: Number(values.price),
+            ...(values.discountedPrice && {
+              discountedPrice: Number(values.discountedPrice),
+            }),
+            categoryId: values.categoryId,
+            status: values.status,
+            imageAlt: values.imageAlt?.trim() || values.name.trim(),
+          };
+
+          const response = await fetch(`/api/admin/menus/${menuId}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeaders,
+            },
+            body: JSON.stringify(menuData),
+          });
+
+          const result = await response.json();
+
+          if (response.ok) {
+            toast.success("Menu updated successfully!");
+            router.push("/administrator/menus");
+          } else {
+            const error: ApiError = {
+              message:
+                result.error || result.message || "Failed to update menu",
+              details: result.details,
+            };
+
+            toast.error(error.message);
+
+            // Handle validation errors
+            if (error.details) {
+              error.details.forEach((detail: ValidationDetail) => {
+                const fieldPath = detail.path?.join(".") || "general";
+                toast.error(`${fieldPath}: ${detail.message}`);
+              });
+            }
           }
         }
       } catch (error) {
-        console.error("Error creating menu:", error);
+        console.error("Error updating menu:", error);
         const errorMessage =
-          error instanceof Error ? error.message : "Error creating menu";
+          error instanceof Error ? error.message : "Error updating menu";
         toast.error(errorMessage);
       } finally {
         setLoading(false);
       }
     },
-    [session?.accessToken, authHeaders, router]
+    [session?.accessToken, authHeaders, menuId, router]
   );
 
   const handleSaveAsDraft = useCallback(() => {
@@ -479,22 +710,23 @@ export default function AddMenuPage() {
     form.handleSubmit(onSubmit)();
   }, [form, onSubmit]);
 
-  const handlePublish = useCallback(() => {
+  const handleUpdateAndPublish = useCallback(() => {
     form.setValue("status", "PUBLISHED");
     form.handleSubmit(onSubmit)();
   }, [form, onSubmit]);
 
   // Effects
   useEffect(() => {
-    if (status === "authenticated") {
+    if (status === "authenticated" && menuId) {
+      fetchMenu();
       fetchCategories();
     }
-  }, [fetchCategories, status]);
+  }, [fetchMenu, fetchCategories, status, menuId]);
 
   // Loading state for unauthenticated
   if (status === "loading") {
     return (
-      <div className="p-4">
+      <div className=" P-4">
         <Card>
           <CardHeader>
             <Skeleton className="h-8 w-64" />
@@ -510,7 +742,7 @@ export default function AddMenuPage() {
   // Unauthenticated state
   if (status === "unauthenticated") {
     return (
-      <div className="p-4">
+      <div className="P-4">
         <Card>
           <CardContent className="text-center py-12">
             <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -518,7 +750,7 @@ export default function AddMenuPage() {
               Authentication Required
             </h2>
             <p className="text-muted-foreground">
-              Please sign in to add a new menu.
+              Please sign in to edit this menu.
             </p>
           </CardContent>
         </Card>
@@ -526,8 +758,45 @@ export default function AddMenuPage() {
     );
   }
 
+  // Initial loading state
+  if (initialLoading) {
+    return (
+      <div className=" P-4">
+        <div className="w-full">
+          <CardContent>
+            <LoadingForm />
+          </CardContent>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state for menu loading
+  if (menuError && menuRetryCount >= MAX_RETRIES) {
+    return (
+      <div className="P-4">
+        <Card>
+          <CardContent className="text-center py-12">
+            <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-lg font-semibold mb-2">Failed to Load Menu</h2>
+            <p className="text-muted-foreground mb-4">{menuError}</p>
+            <div className="space-x-2">
+              <Button onClick={handleRetryMenu}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+              <Link href="/administrator/menus">
+                <Button variant="outline">Back to Menu List</Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-4">
+    <div className="P-4">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-md">
@@ -536,11 +805,11 @@ export default function AddMenuPage() {
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
-            Add New Menu
+            Edit Menu
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Error Banner */}
+          {/* Error Banners */}
           {categoriesError && retryCount >= MAX_RETRIES && (
             <ErrorBanner
               error={categoriesError}
@@ -696,7 +965,7 @@ export default function AddMenuPage() {
                       <FormLabel>Category *</FormLabel>
                       <Select
                         onValueChange={field.onChange}
-                        defaultValue={field.value}
+                        value={field.value}
                         disabled={categoriesLoading || loading}
                       >
                         <FormControl>
@@ -734,7 +1003,7 @@ export default function AddMenuPage() {
                       <FormLabel>Status</FormLabel>
                       <Select
                         onValueChange={field.onChange}
-                        defaultValue={field.value}
+                        value={field.value}
                         disabled={loading}
                       >
                         <FormControl>
@@ -756,13 +1025,27 @@ export default function AddMenuPage() {
                 />
               </div>
 
+              {/* Current Image Display */}
+              {currentImageUrl && !imagePreview && (
+                <CurrentImage
+                  src={currentImageUrl}
+                  alt="Current menu image"
+                  onRemove={handleCurrentImageRemove}
+                />
+              )}
+
               {/* Image Upload */}
               <FormField
                 control={form.control}
                 name="image"
                 render={({ field: { onChange, name } }) => (
                   <FormItem>
-                    <FormLabel>Product Image *</FormLabel>
+                    <FormLabel>
+                      <div className="flex items-center gap-2">
+                        <ImageIcon className="h-4 w-4" />
+                        {currentImageUrl ? "Update Image" : "Product Image"}
+                      </div>
+                    </FormLabel>
                     <FormControl>
                       <div className="space-y-2">
                         <Input
@@ -774,24 +1057,26 @@ export default function AddMenuPage() {
                           }}
                           disabled={loading}
                           name={name}
-                          // Remove value and other props that cause controlled/uncontrolled conflict
                         />
                         <div className="flex items-center text-sm text-muted-foreground">
                           <Upload className="h-4 w-4 mr-2" />
-                          Upload a product image (max 5MB)
+                          {currentImageUrl
+                            ? "Upload a new image to replace the current one (max 5MB)"
+                            : "Upload a product image (max 5MB)"}
                         </div>
                       </div>
                     </FormControl>
                     <FormDescription>
                       Supported formats: JPEG, PNG, WebP. Recommended size:
                       800x600px or higher.
+                      {currentImageUrl && " Leave empty to keep current image."}
                     </FormDescription>
                     <FormMessage />
 
                     {imagePreview && (
                       <ImagePreview
                         src={imagePreview}
-                        alt="Product preview"
+                        alt="New image preview"
                         onClear={handleImageClear}
                       />
                     )}
@@ -855,13 +1140,13 @@ export default function AddMenuPage() {
                   <Button
                     type="button"
                     disabled={loading}
-                    onClick={handlePublish}
+                    onClick={handleUpdateAndPublish}
                     className="w-full sm:w-auto"
                   >
                     {loading && form.getValues("status") === "PUBLISHED" && (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     )}
-                    Publish Menu
+                    Update & Publish
                   </Button>
                 </div>
               </div>

@@ -3,8 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { ProductStatus, Prisma } from "@/generated/prisma";
 import { getTokenFromHeader, verifyAuthToken } from "@/lib/verify-jwt";
+import { uploadImage, validateImageFile } from "@/lib/image-handler";
 
-// Validation schema
+// Validation schema for JSON data
 const createMenuSchema = z.object({
   name: z.string().min(1, "Name is required").max(200, "Name too long"),
   description: z
@@ -14,16 +15,16 @@ const createMenuSchema = z.object({
   discountedPrice: z
     .number()
     .positive("Discounted price must be positive")
-    .optional(),
+    .optional()
+    .nullable(),
   discountPercent: z
     .number()
     .int("Discount percent must be an integer")
     .min(0)
     .max(100, "Discount percent must be between 0-100")
-    .optional(),
+    .optional()
+    .nullable(),
   status: z.enum(["DRAFT", "PUBLISHED"]).default("DRAFT"),
-  imageUrl: z.string().url("Invalid image URL").optional(),
-  imageKey: z.string().optional(),
   imageAlt: z.string().optional(),
   categoryId: z.string().min(1, "Category is required"),
 });
@@ -50,7 +51,10 @@ export async function GET(request: NextRequest) {
     const where: Prisma.MenuWhereInput = {};
 
     if (search) {
-      where.OR = [{ name: { contains: search, mode: "insensitive" } }];
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { description: { hasSome: [search] } }, // Search in description array
+      ];
     }
 
     if (categoryId) {
@@ -89,7 +93,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("GET /api/administrator/menus error:", error);
+    console.error("GET /api/admin/menus error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -97,7 +101,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create new menu
+// POST - Create new menu (with optional image upload)
 export async function POST(request: NextRequest) {
   try {
     const token = getTokenFromHeader(request);
@@ -107,8 +111,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const validatedData = createMenuSchema.parse(body);
+    // Check if request contains file upload
+    const contentType = request.headers.get("content-type");
+    let validatedData: z.infer<typeof createMenuSchema>;
+    let imageFile: File | null = null;
+
+    if (contentType?.includes("multipart/form-data")) {
+      // Handle form data with file upload
+      const formData = await request.formData();
+      const jsonData = formData.get("data") as string;
+      imageFile = formData.get("image") as File | null;
+
+      if (!jsonData) {
+        return NextResponse.json(
+          { error: "Menu data is required" },
+          { status: 400 }
+        );
+      }
+
+      const parsedData = JSON.parse(jsonData);
+      validatedData = createMenuSchema.parse(parsedData);
+    } else {
+      // Handle JSON data only
+      const body = await request.json();
+      validatedData = createMenuSchema.parse(body);
+    }
 
     // Check if category exists
     const categoryExists = await prisma.category.findUnique({
@@ -122,11 +149,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Handle image upload if provided
+    let imageData = {};
+    if (imageFile && imageFile.size > 0) {
+      // Validate image file
+      const validation = validateImageFile(imageFile);
+      if (!validation.isValid) {
+        return NextResponse.json({ error: validation.error }, { status: 400 });
+      }
+
+      try {
+        const uploadResult = await uploadImage(imageFile, "menus");
+        imageData = {
+          imageUrl: uploadResult.url,
+          imageKey: uploadResult.key,
+          imageAlt: validatedData.imageAlt || validatedData.name,
+        };
+      } catch (uploadError) {
+        console.error("Image upload error:", uploadError);
+        return NextResponse.json(
+          { error: "Failed to upload image" },
+          { status: 500 }
+        );
+      }
+    }
+
     // Calculate discount percent if discounted price is provided
     const finalData = {
       ...validatedData,
+      ...imageData,
       price: validatedData.price,
-      discountedPrice: validatedData.discountedPrice,
+      discountedPrice: validatedData.discountedPrice || null,
       discountPercent:
         validatedData.discountedPrice && !validatedData.discountPercent
           ? Math.round(
@@ -134,7 +187,7 @@ export async function POST(request: NextRequest) {
                 validatedData.price) *
                 100
             )
-          : validatedData.discountPercent,
+          : validatedData.discountPercent || null,
     };
 
     const menu = await prisma.menu.create({
@@ -167,7 +220,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error("POST /api/administrator/menus error:", error);
+    console.error("POST /api/admin/menus error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

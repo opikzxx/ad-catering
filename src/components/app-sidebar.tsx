@@ -23,6 +23,11 @@ const data = {
       icon: BookOpen,
     },
     {
+      title: "Categories",
+      url: "/administrator/categories",
+      icon: BookOpen,
+    },
+    {
       title: "Settings",
       url: "#",
       icon: Settings2,
