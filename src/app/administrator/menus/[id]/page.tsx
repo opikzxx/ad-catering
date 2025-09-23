@@ -108,7 +108,7 @@ const formSchema = z.object({
   description: z
     .array(z.string().min(1, { message: "Description point cannot be empty." }))
     .min(1, { message: "At least one description point is required." })
-    .max(10, { message: "Maximum 10 description points allowed." }),
+    .max(20, { message: "Maximum 20 description points allowed." }),
   price: z.string().refine(
     (val) => {
       const num = Number(val);
@@ -849,7 +849,7 @@ export default function EditMenuPage() {
                   <FormItem>
                     <FormLabel>Description *</FormLabel>
                     <FormDescription>
-                      Add multiple points to describe your menu (max 10 points)
+                      Add multiple points to describe your menu (max 20 points)
                     </FormDescription>
                     <div className="space-y-2">
                       {fields.map((field, index) => (
@@ -887,7 +887,7 @@ export default function EditMenuPage() {
                         />
                       ))}
                     </div>
-                    {fields.length < 10 && (
+                    {fields.length < 20 && (
                       <Button
                         type="button"
                         variant="outline"
