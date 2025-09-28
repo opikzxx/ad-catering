@@ -176,21 +176,41 @@ Mohon informasi lebih lanjut mengenai pemesanan. Terima kasih!`;
         <div className="space-y-3">
           <h4 className="font-semibold">Jumlah Pesanan</h4>
           <div className="flex items-center justify-between">
-            <div className="flex items-center border rounded-lg">
+            <div className="flex items-center border rounded-lg overflow-hidden">
+              {/* Button - */}
               <button
                 onClick={() => handleQuantityChange("decrease")}
                 disabled={quantity <= 1}
-                className="px-3 py-2 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-l-lg transition-colors"
+                className="px-3 py-2 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 -
               </button>
-              <span className="px-4 py-2 font-medium min-w-[60px] text-center">
-                {quantity}
-              </span>
+
+              {/* Input tanpa arrow */}
+              <input
+                type="number"
+                value={quantity}
+                min={1}
+                max={1000}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val)) {
+                    setQuantity(Math.min(Math.max(val, 1), 1000));
+                  } else {
+                    setQuantity(1);
+                  }
+                }}
+                className="w-16 text-center py-2 outline-none border-x 
+               [appearance:textfield] 
+               [&::-webkit-outer-spin-button]:appearance-none 
+               [&::-webkit-inner-spin-button]:appearance-none"
+              />
+
+              {/* Button + */}
               <button
                 onClick={() => handleQuantityChange("increase")}
-                disabled={quantity >= 99}
-                className="px-3 py-2 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-r-lg transition-colors"
+                disabled={quantity >= 1000}
+                className="px-3 py-2 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 +
               </button>
