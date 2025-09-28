@@ -60,12 +60,12 @@ export async function GET(request: NextRequest) {
             imageAlt: true,
           },
           orderBy: {
-            name: "asc",
+            createdAt: "asc",
           },
         },
       },
       orderBy: {
-        name: "asc",
+        createdAt: "asc",
       },
     });
 
