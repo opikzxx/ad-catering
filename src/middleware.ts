@@ -6,7 +6,7 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth;
   const userRole = req.auth?.user?.role;
 
-  // Check if accessing administrator routes
+  // Check if accessing administrator routess
   const isAdministratorRoute = nextUrl.pathname.startsWith("/administrator");
 
   // Handle session expiry for protected routes
