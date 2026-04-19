@@ -238,19 +238,20 @@ Mohon informasi lebih lanjut mengenai pemesanan. Terima kasih!`;
           </div>
         </div>
 
-        <DialogFooter className="flex-col gap-2 sm:flex-col">
+        <DialogFooter className="flex flex-col gap-3 pt-2">
           <Button
             onClick={handleWhatsAppOrder}
-            className="w-full bg-green-600 hover:bg-green-700 text-white"
+            className="w-full bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
             size="lg"
           >
-            <MessageCircle className="h-4 w-4 mr-2" />
+            <MessageCircle className="h-5 w-5 mr-2" />
             Pesan via WhatsApp
           </Button>
+
           <Button
             variant="outline"
             onClick={onClose}
-            className="w-full"
+            className="w-full border-gray-300 hover:bg-gray-100 transition-all duration-200"
             size="lg"
           >
             Tutup
